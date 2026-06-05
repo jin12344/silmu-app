@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐭 두더지 잡기</title>
+
+  <!-- Firebase Compat SDK (v10) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:   #4FC3F7;
+      --red:    #EF9A9A;
+      --gold:   #FFD700;
+      --grass:  #2E7D32;
+      --dirt:   #5D4037;
+      --bg1:    #0D1B2A;
+      --bg2:    #1B2838;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(160deg, var(--bg1) 0%, var(--bg2) 100%);
+      min-height: 100vh;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+    }
+
+    /* ── Screens ── */
+    .screen { display: none; flex-direction: column; align-items: center;
+               justify-content: center; padding: 24px; width: 100%; max-width: 760px;
+               min-height: 100vh; gap: 20px; }
+    .screen.active { display: flex; }
+
+    h1 { font-size: clamp(2rem, 6vw, 3.2rem); color: var(--gold);
+         text-shadow: 0 0 24px rgba(255,215,0,.6); }
+    h2 { font-size: clamp(1.4rem, 4vw, 2rem); color: var(--gold); }
+
+    /* ── Card ── */
+    .card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+            border-radius: 20px; padding: 28px 32px; width: 100%; max-width: 460px;
+            backdrop-filter: blur(6px); }
+
+    /* ── Inputs ── */
+    input[type=text] {
+      width: 100%; padding: 12px 16px; font-size: 1rem;
+      border-radius: 12px; border: 2px solid rgba(255,255,255,.25);
+      background: rgba(255,255,255,.1); color: #fff; outline: none;
+      transition: border-color .2s;
+    }
+    input[type=text]::placeholder { color: rgba(255,255,255,.4); }
+    input[type=text]:focus { border-color: var(--gold); }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 13px 32px; font-size: 1.05rem; font-weight: 700;
+      border-radius: 30px; border: none; cursor: pointer;
+      transition: transform .15s, box-shadow .15s; width: 100%;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #FF6B35, #FF8C00);
+      color: #fff;
+      box-shadow: 0 4px 18px rgba(255,107,53,.45);
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.25);
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: .45; pointer-events: none; }
+
+    /* ── Label ── */
+    .label { font-size: .85rem; opacity: .65; text-transform: uppercase;
+             letter-spacing: .06em; }
+
+    /* ── Room code ── */
+    .room-code {
+      font-size: clamp(2.5rem, 10vw, 4rem); font-weight: 900; letter-spacing: .18em;
+      color: var(--gold); text-shadow: 0 0 20px rgba(255,215,0,.5);
+    }
+
+    /* ── Countdown ── */
+    #countdown-num {
+      font-size: 20vw; font-weight: 900; color: var(--gold);
+      text-shadow: 0 0 60px rgba(255,215,0,.8);
+      animation: pop .9s infinite;
+    }
+    @keyframes pop { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+    /* ── HUD ── */
+    .hud {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; background: rgba(255,255,255,.08); border-radius: 16px;
+      padding: 14px 22px; gap: 12px;
+    }
+    .hud-player { text-align: center; min-width: 100px; }
+    .hud-player .pname { font-size: .95rem; opacity: .8; margin-bottom: 2px;
+                          max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+                          white-space: nowrap; }
+    .hud-player .pscore { font-size: 2.6rem; font-weight: 900; line-height: 1; }
+    .p1-color { color: var(--blue); }
+    .p2-color { color: var(--red); }
+
+    .hud-center { text-align: center; }
+    .round-label { font-size: .8rem; opacity: .6; text-transform: uppercase; }
+    .timer-display {
+      font-size: 2.8rem; font-weight: 900; color: #fff;
+      transition: color .3s;
+    }
+    .timer-display.urgent { color: #FF4444; animation: pulse .5s infinite; }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+
+    /* ── Mole Grid ── */
+    .mole-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .hole-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+
+    .hole {
+      width: 100%; aspect-ratio: 1.5/1;
+      max-width: 150px;
+      background: radial-gradient(ellipse at 50% 40%, #3e1f00 0%, #1a0900 100%);
+      border-radius: 50%;
+      border: 4px solid #4a2800;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 8px 20px rgba(0,0,0,.85), 0 4px 12px rgba(0,0,0,.5);
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hole:active { transform: scale(.97); }
+
+    .mole-emoji {
+      position: absolute;
+      left: 50%; bottom: -110%;
+      transform: translateX(-50%);
+      font-size: clamp(2rem, 6vw, 3rem);
+      transition: bottom .15s ease-out;
+      pointer-events: none;
+      filter: drop-shadow(0 3px 4px rgba(0,0,0,.6));
+    }
+    .mole-emoji.up   { bottom: 2px; }
+    .mole-emoji.whacked {
+      animation: whack .3s ease-out forwards;
+    }
+    @keyframes whack {
+      0%   { bottom: 2px; transform: translateX(-50%) scale(1); }
+      40%  { transform: translateX(-50%) scale(1.4) rotate(15deg); }
+      100% { bottom: -110%; transform: translateX(-50%) scale(.5); opacity: 0; }
+    }
+
+    .hole-num {
+      font-size: .75rem; opacity: .5;
+    }
+
+    /* Score pop */
+    .score-pop {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      font-size: 1.3rem; font-weight: 900; pointer-events: none;
+      animation: floatUp .8s ease-out forwards;
+    }
+    .score-pop.p1 { color: var(--blue); }
+    .score-pop.p2 { color: var(--red); }
+    @keyframes floatUp {
+      0%  { opacity:1; top:0; }
+      100%{ opacity:0; top:-50px; }
+    }
+
+    /* ── Round Summary ── */
+    .rs-row {
+      display: flex; justify-content: space-around; align-items: center; gap: 12px;
+      margin: 16px 0;
+    }
+    .rs-player { text-align: center; }
+    .rs-round-score { font-size: 3rem; font-weight: 900; line-height: 1; }
+    .rs-cumulative { font-size: .85rem; opacity: .6; margin-top: 4px; }
+    .rs-vs { font-size: 1.5rem; opacity: .5; }
+    .rs-verdict { font-size: 1.15rem; font-weight: 700; color: var(--gold);
+                  text-align: center; margin-bottom: 8px; }
+
+    /* ── Winner Screen ── */
+    .trophy { font-size: clamp(4rem, 15vw, 7rem); line-height: 1; }
+    .winner-name {
+      font-size: clamp(2rem, 8vw, 3.8rem); font-weight: 900;
+      color: var(--gold);
+      animation: glow 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes glow {
+      from { text-shadow: 0 0 20px rgba(255,215,0,.4); }
+      to   { text-shadow: 0 0 50px rgba(255,215,0,1), 0 0 80px rgba(255,107,53,.7); }
+    }
+    .congrats-msg { font-size: 1.1rem; opacity: .9; text-align: center; }
+    .final-table {
+      display: flex; gap: 32px; justify-content: center; margin: 8px 0;
+    }
+    .final-col { text-align: center; }
+    .final-total { font-size: 2rem; font-weight: 900; }
+    .final-rounds { font-size: .8rem; opacity: .6; }
+
+    /* ── Confetti ── */
+    .confetti-piece {
+      position: fixed; border-radius: 3px;
+      animation: fall linear forwards;
+      pointer-events: none; z-index: 999;
+    }
+    @keyframes fall {
+      0%  { transform: translateY(-40px) rotate(0deg);   opacity: 1; }
+      100%{ transform: translateY(105vh) rotate(540deg); opacity: 0; }
+    }
+
+    /* ── Status badge ── */
+    .status-dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; background: #4CAF50;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Error toast ── */
+    #toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: #c62828; color: #fff; padding: 12px 24px; border-radius: 12px;
+      font-weight: 600; font-size: .95rem; display: none; z-index: 9999;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .mole-grid { gap: 12px; max-width: 340px; }
+      .hud { padding: 10px 14px; }
+      .hud-player .pscore { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ════════════════════════════ HOME ════════════════════════════ -->
+<div id="screen-home" class="screen active">
+  <h1>🐭 두더지 잡기</h1>
+  <p style="opacity:.65; font-size:1rem; text-align:center; margin-top:-8px;">
+    3라운드 · 라운드당 30초 · 온라인 2인 대전
+  </p>
+
+  <div class="card" style="display:flex; flex-direction:column; gap:14px;">
+    <div>
+      <div class="label" style="margin-bottom:6px;">닉네임</div>
+      <input type="text" id="inp-nickname" placeholder="닉네임을 입력하세요" maxlength="12" />
+    </div>
+
+    <button class="btn btn-primary" onclick="doCreateRoom()">방 만들기 (1P)</button>
+    <button class="btn btn-secondary" onclick="showJoin()">방 참가하기 (2P)</button>
+
+    <div style="text-align:center; margin-top:4px;">
+      <a href="rules.html" target="_blank"
+         style="color:var(--gold); font-size:.85rem; opacity:.8; text-decoration:none;">
+        📖 게임 규칙 보기
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════ JOIN ════════════════════════════ -->
+<div id="screen-join" class="screen">
+  <h2>방 참가하기</h2>
+  <div class="card" style="display:flex; flex-direction:column; gap:14px;">
+    <div>
+      <div class="label" style="margin-bottom:6px;">방 코드 (4자리)</div>
+      <input type="text" id="inp-roomcode" placeholder="예: AB3X"
+             maxlength="4" style="text-transform:uppercase; text-align:center; font-size:1.5rem; letter-spacing:.2em;" />
+    </div>
+    <button class="btn btn-primary" onclick="doJoinRoom()">입장</button>
+    <button class="btn btn-secondary" onclick="goHome()">← 돌아가기</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════ LOBBY ════════════════════════════ -->
+<div id="screen-lobby" class="screen">
+  <h2>방 생성 완료!</h2>
+  <div class="card" style="text-align:center; display:flex; flex-direction:column; gap:14px;">
+    <div class="label">상대방에게 이 코드를 알려주세요</div>
+    <div class="room-code" id="lobby-code">----</div>
+    <div style="font-size:.9rem; opacity:.6;">
+      <span class="status-dot"></span>
+      &nbsp;상대방 입장 대기 중…
+    </div>
+    <div style="font-size:.85rem; opacity:.55;" id="lobby-p1-name"></div>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="goHome()">취소</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════ COUNTDOWN ════════════════════════ -->
+<div id="screen-countdown" class="screen">
+  <div id="countdown-round" style="font-size:1.3rem; opacity:.7; margin-bottom:12px;">Round 1</div>
+  <div id="countdown-num">3</div>
+  <div style="font-size:1rem; opacity:.6; margin-top:12px;">준비하세요!</div>
+</div>
+
+<!-- ════════════════════════════ GAME ════════════════════════════ -->
+<div id="screen-game" class="screen" style="gap:16px;">
+  <!-- HUD -->
+  <div class="hud">
+    <div class="hud-player">
+      <div class="pname p1-color" id="hud-p1-name">P1</div>
+      <div class="pscore p1-color" id="hud-p1-score">0</div>
+    </div>
+    <div class="hud-center">
+      <div class="round-label" id="hud-round">Round 1 / 3</div>
+      <div class="timer-display" id="hud-timer">30</div>
+    </div>
+    <div class="hud-player" style="align-items:flex-end;">
+      <div class="pname p2-color" id="hud-p2-name">P2</div>
+      <div class="pscore p2-color" id="hud-p2-score">0</div>
+    </div>
+  </div>
+
+  <!-- Mole Grid -->
+  <div class="mole-grid" id="mole-grid"></div>
+
+  <!-- My turn indicator -->
+  <div id="my-turn-badge" style="font-size:.9rem; opacity:.7; display:none;"></div>
+</div>
+
+<!-- ════════════════════════════ ROUND END ════════════════════════ -->
+<div id="screen-round-end" class="screen">
+  <h2 id="re-title">라운드 1 종료!</h2>
+  <div class="card" style="width:100%; max-width:420px;">
+    <div class="rs-verdict" id="re-verdict"></div>
+    <div class="rs-row">
+      <div class="rs-player">
+        <div class="pname p1-color" id="re-p1-name">P1</div>
+        <div class="rs-round-score p1-color" id="re-p1-round">0</div>
+        <div class="rs-cumulative" id="re-p1-total">누적: 0</div>
+      </div>
+      <div class="rs-vs">VS</div>
+      <div class="rs-player">
+        <div class="pname p2-color" id="re-p2-name">P2</div>
+        <div class="rs-round-score p2-color" id="re-p2-round">0</div>
+        <div class="rs-cumulative" id="re-p2-total">누적: 0</div>
+      </div>
+    </div>
+  </div>
+  <!-- Host-only next button; non-host sees a waiting message -->
+  <button class="btn btn-primary" id="re-next-btn" style="max-width:260px; display:none;"
+          onclick="hostAdvance()"></button>
+  <div id="re-wait-msg" style="font-size:.9rem; opacity:.6; display:none;">
+    <span class="status-dot"></span>&nbsp;호스트가 다음 라운드를 시작하기를 기다리는 중…
+  </div>
+</div>
+
+<!-- ════════════════════════════ WINNER ════════════════════════════ -->
+<div id="screen-winner" class="screen" style="gap:16px;">
+  <div class="trophy">🏆</div>
+  <div style="font-size:1.2rem; opacity:.7;">최종 우승자</div>
+  <div class="winner-name" id="w-name">—</div>
+  <div class="congrats-msg" id="w-msg"></div>
+  <div class="final-table" id="w-table"></div>
+  <button class="btn btn-primary" style="max-width:220px;" onclick="goHome()">처음으로</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<script>
+// ─────────────────────────────────────────────────────────────────
+//  FIREBASE CONFIG  ← 본인의 Firebase 프로젝트 설정으로 교체하세요
+// ─────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+// ─────────────────────────────────────────────────────────────────
+//  Init Firebase
+// ─────────────────────────────────────────────────────────────────
+let db;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+} catch(e) {
+  console.warn('Firebase init failed:', e.message);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Local state
+// ─────────────────────────────────────────────────────────────────
+const TOTAL_ROUNDS = 3;
+const ROUND_SECONDS = 30;
+const MOLE_MIN_MS = 900;
+const MOLE_MAX_MS = 1800;
+
+let myId        = Math.random().toString(36).substr(2, 9);
+let myKey       = null;   // 'p1' | 'p2'
+let roomCode    = null;
+let isHost      = false;
+let gameRef     = null;
+let gameState   = null;
+let gameListener= null;
+
+// Host-only timers
+let hostRoundInterval = null;
+let hostMoleTimeout   = null;
+
+// Track scores at round start (to compute per-round delta)
+let scoreAtRoundStart = { p1: 0, p2: 0 };
+
+// ─────────────────────────────────────────────────────────────────
+//  UI helpers
+// ─────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome() {
+  cleanupGame();
+  showScreen('screen-home');
+}
+function showJoin() { showScreen('screen-join'); }
+
+function toast(msg, ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display = 'none', ms);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Room code generator
+// ─────────────────────────────────────────────────────────────────
+function genCode() {
+  const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:4}, () => ch[Math.floor(Math.random()*ch.length)]).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Build mole grid (once)
+// ─────────────────────────────────────────────────────────────────
+function buildGrid() {
+  const grid = document.getElementById('mole-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 6; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'hole-wrap';
+
+    const hole = document.createElement('div');
+    hole.className = 'hole';
+    hole.id = `hole-${i}`;
+    hole.onclick = () => onHoleClick(i);
+
+    const mole = document.createElement('div');
+    mole.className = 'mole-emoji';
+    mole.id = `mole-${i}`;
+    mole.textContent = '🐭';
+    hole.appendChild(mole);
+
+    const num = document.createElement('div');
+    num.className = 'hole-num';
+    num.textContent = i + 1;
+
+    wrap.appendChild(hole);
+    wrap.appendChild(num);
+    grid.appendChild(wrap);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Create room
+// ─────────────────────────────────────────────────────────────────
+async function doCreateRoom() {
+  if (!db) return toast('Firebase가 설정되지 않았습니다. README를 확인하세요.');
+  const nick = document.getElementById('inp-nickname').value.trim() || '플레이어 1';
+
+  const code = genCode();
+  roomCode = code;
+  myKey    = 'p1';
+  isHost   = true;
+
+  const initial = {
+    status: 'lobby',
+    round:  1,
+    timeLeft: ROUND_SECONDS,
+    hostId: myId,
+    p1: { id: myId, name: nick, totalScore: 0, roundScores: [0, 0, 0] },
+    p2: null,
+    currentMole: { hole: -1, hitBy: null },
+    createdAt: Date.now()
+  };
+
+  try {
+    await db.ref(`games/${code}`).set(initial);
+    // Auto-delete after 2 hours
+    db.ref(`games/${code}`).onDisconnect().remove();
+    document.getElementById('lobby-code').textContent = code;
+    document.getElementById('lobby-p1-name').textContent = `내 닉네임: ${nick}`;
+    attachListener(code);
+    showScreen('screen-lobby');
+  } catch(e) {
+    toast('방 생성 실패: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Join room
+// ─────────────────────────────────────────────────────────────────
+async function doJoinRoom() {
+  if (!db) return toast('Firebase가 설정되지 않았습니다. README를 확인하세요.');
+  const nick = document.getElementById('inp-nickname').value.trim() || '플레이어 2';
+  const code = (document.getElementById('inp-roomcode').value || '').trim().toUpperCase();
+  if (code.length !== 4) return toast('방 코드 4자리를 입력하세요.');
+
+  try {
+    const snap = await db.ref(`games/${code}`).get();
+    if (!snap.exists()) return toast('존재하지 않는 방입니다.');
+    const st = snap.val();
+    if (st.p2)     return toast('이미 2명이 있는 방입니다.');
+    if (st.status !== 'lobby') return toast('이미 게임이 시작된 방입니다.');
+
+    roomCode = code;
+    myKey    = 'p2';
+    isHost   = false;
+
+    await db.ref(`games/${code}/p2`).set({ id: myId, name: nick, totalScore: 0, roundScores: [0,0,0] });
+    attachListener(code);
+    showScreen('screen-lobby');
+    document.getElementById('lobby-code').textContent = code;
+    document.getElementById('lobby-p1-name').textContent = `내 닉네임: ${nick}`;
+  } catch(e) {
+    toast('입장 실패: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Firebase listener
+// ─────────────────────────────────────────────────────────────────
+function attachListener(code) {
+  if (gameListener) gameRef.off('value', gameListener);
+  gameRef = db.ref(`games/${code}`);
+  gameListener = gameRef.on('value', snap => {
+    if (!snap.exists()) { toast('방이 사라졌습니다.'); goHome(); return; }
+    gameState = snap.val();
+    onStateChange(gameState);
+  });
+}
+
+function cleanupGame() {
+  if (gameRef && gameListener) { gameRef.off('value', gameListener); gameListener = null; }
+  clearInterval(hostRoundInterval);
+  clearTimeout(hostMoleTimeout);
+  hostRoundInterval = null;
+  hostMoleTimeout   = null;
+  myKey = null; isHost = false; roomCode = null; gameRef = null; gameState = null;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  State machine
+// ─────────────────────────────────────────────────────────────────
+let lastStatus = null;
+let lastRound  = null;
+
+function onStateChange(st) {
+  const status = st.status;
+  const round  = st.round;
+
+  // Lobby: wait for both players
+  if (status === 'lobby') {
+    if (st.p1 && st.p2 && isHost) {
+      // Both joined → kick off countdown
+      gameRef.update({ status: 'countdown' });
+    }
+    return;
+  }
+
+  // Countdown
+  if (status === 'countdown') {
+    if (lastStatus !== 'countdown' || lastRound !== round) {
+      lastStatus = 'countdown'; lastRound = round;
+      runCountdown(round, () => {
+        if (isHost) {
+          scoreAtRoundStart = {
+            p1: (st.p1 && st.p1.totalScore) || 0,
+            p2: (st.p2 && st.p2.totalScore) || 0
+          };
+          gameRef.update({ status: 'playing', timeLeft: ROUND_SECONDS });
+        }
+      });
+    }
+    return;
+  }
+
+  // Playing
+  if (status === 'playing') {
+    if (lastStatus !== 'playing' || lastRound !== round) {
+      lastStatus = 'playing'; lastRound = round;
+      buildGrid();
+      showScreen('screen-game');
+      if (isHost) startHostGameLoop();
+    }
+    renderGame(st);
+    return;
+  }
+
+  // Round end
+  if (status === 'roundEnd') {
+    if (lastStatus !== 'roundEnd' || lastRound !== round) {
+      lastStatus = 'roundEnd'; lastRound = round;
+      if (isHost) { clearInterval(hostRoundInterval); clearTimeout(hostMoleTimeout); }
+      renderRoundEnd(st);
+    }
+    return;
+  }
+
+  // Done
+  if (status === 'done') {
+    if (lastStatus !== 'done') {
+      lastStatus = 'done';
+      if (isHost) { clearInterval(hostRoundInterval); clearTimeout(hostMoleTimeout); }
+      renderWinner(st);
+    }
+    return;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Countdown animation (client-side, no Firebase writes)
+// ─────────────────────────────────────────────────────────────────
+function runCountdown(round, done) {
+  showScreen('screen-countdown');
+  document.getElementById('countdown-round').textContent = `Round ${round} / ${TOTAL_ROUNDS}`;
+  const el = document.getElementById('countdown-num');
+  let n = 3;
+  el.textContent = n;
+  const iv = setInterval(() => {
+    n--;
+    if (n <= 0) { clearInterval(iv); el.textContent = 'GO!'; setTimeout(done, 600); }
+    else el.textContent = n;
+  }, 1000);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  HOST: game loop
+// ─────────────────────────────────────────────────────────────────
+function startHostGameLoop() {
+  clearInterval(hostRoundInterval);
+  clearTimeout(hostMoleTimeout);
+
+  // Timer countdown
+  hostRoundInterval = setInterval(async () => {
+    const snap = await gameRef.once('value');
+    const st = snap.val();
+    if (!st || st.status !== 'playing') { clearInterval(hostRoundInterval); return; }
+    const newTime = st.timeLeft - 1;
+    if (newTime <= 0) {
+      clearInterval(hostRoundInterval);
+      clearTimeout(hostMoleTimeout);
+      await gameRef.child('currentMole').set({ hole: -1, hitBy: null });
+      await gameRef.update({ timeLeft: 0, status: 'roundEnd' });
+    } else {
+      gameRef.child('timeLeft').set(newTime);
+    }
+  }, 1000);
+
+  // Spawn first mole
+  setTimeout(() => hostSpawnMole(), 500);
+}
+
+function hostSpawnMole() {
+  if (!isHost) return;
+  clearTimeout(hostMoleTimeout);
+
+  const hole = Math.floor(Math.random() * 6);
+  gameRef.child('currentMole').set({ hole, hitBy: null, spawnTime: Date.now() });
+
+  const dur = MOLE_MIN_MS + Math.random() * (MOLE_MAX_MS - MOLE_MIN_MS);
+  hostMoleTimeout = setTimeout(async () => {
+    const snap = await gameRef.child('currentMole').once('value');
+    const m = snap.val();
+    if (m && m.hitBy === null) {
+      // Mole escaped
+      const gsnap = await gameRef.child('status').once('value');
+      if (gsnap.val() === 'playing') {
+        await gameRef.child('currentMole').set({ hole: -1, hitBy: null });
+        setTimeout(() => hostSpawnMole(), 200 + Math.random()*200);
+      }
+    }
+  }, dur);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Player: click hole
+// ─────────────────────────────────────────────────────────────────
+function onHoleClick(holeIdx) {
+  if (!gameState || gameState.status !== 'playing') return;
+  const cm = gameState.currentMole;
+  if (!cm || cm.hole !== holeIdx || cm.hitBy !== null) return;
+
+  // Optimistic animation
+  flashHit(holeIdx);
+
+  // Transaction: claim the mole
+  gameRef.child('currentMole/hitBy').transaction(current => {
+    if (current === null) return myKey;
+    return undefined; // abort
+  }).then(result => {
+    if (result.committed) {
+      // Update my score
+      gameRef.child(`${myKey}/totalScore`).transaction(s => (s || 0) + 1);
+      // Show pop
+      showScorePop(holeIdx, myKey);
+      // Host spawns next
+      if (isHost) {
+        clearTimeout(hostMoleTimeout);
+        const gstat = (gameState || {}).status;
+        if (gstat === 'playing') setTimeout(() => hostSpawnMole(), 350 + Math.random()*200);
+      }
+    }
+  });
+}
+
+function flashHit(holeIdx) {
+  const mole = document.getElementById(`mole-${holeIdx}`);
+  if (!mole) return;
+  mole.classList.remove('up');
+  mole.classList.add('whacked');
+  setTimeout(() => mole.classList.remove('whacked'), 350);
+}
+
+function showScorePop(holeIdx, key) {
+  const hole = document.getElementById(`hole-${holeIdx}`);
+  if (!hole) return;
+  const pop = document.createElement('div');
+  pop.className = `score-pop ${key}`;
+  pop.textContent = '+1';
+  hole.appendChild(pop);
+  setTimeout(() => pop.remove(), 900);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render: game screen
+// ─────────────────────────────────────────────────────────────────
+let prevMoleHole = -1;
+
+function renderGame(st) {
+  if (!st.p1 || !st.p2) return;
+
+  document.getElementById('hud-p1-name').textContent  = st.p1.name;
+  document.getElementById('hud-p2-name').textContent  = st.p2.name;
+  document.getElementById('hud-p1-score').textContent = st.p1.totalScore;
+  document.getElementById('hud-p2-score').textContent = st.p2.totalScore;
+  document.getElementById('hud-round').textContent    = `Round ${st.round} / ${TOTAL_ROUNDS}`;
+
+  const timer = document.getElementById('hud-timer');
+  timer.textContent = st.timeLeft;
+  timer.classList.toggle('urgent', st.timeLeft <= 10);
+
+  // Update mole visibility
+  const cm = st.currentMole;
+  const activeHole = (cm && cm.hitBy === null) ? cm.hole : -1;
+
+  if (activeHole !== prevMoleHole) {
+    // Hide old
+    if (prevMoleHole >= 0) {
+      const old = document.getElementById(`mole-${prevMoleHole}`);
+      if (old) { old.classList.remove('up'); }
+    }
+    // Show new
+    if (activeHole >= 0) {
+      const neu = document.getElementById(`mole-${activeHole}`);
+      if (neu) { neu.classList.remove('whacked'); void neu.offsetWidth; neu.classList.add('up'); }
+    }
+    prevMoleHole = activeHole;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render: round end
+// ─────────────────────────────────────────────────────────────────
+function renderRoundEnd(st) {
+  // Hide any remaining mole
+  if (prevMoleHole >= 0) {
+    const m = document.getElementById(`mole-${prevMoleHole}`);
+    if (m) m.classList.remove('up');
+    prevMoleHole = -1;
+  }
+
+  const p1total = st.p1.totalScore;
+  const p2total = st.p2.totalScore;
+  const p1round = p1total - scoreAtRoundStart.p1;
+  const p2round = p2total - scoreAtRoundStart.p2;
+
+  // Save round delta to scoreAtRoundStart for next round tracking
+  scoreAtRoundStart = { p1: p1total, p2: p2total };
+
+  document.getElementById('re-title').textContent    = `라운드 ${st.round} 종료!`;
+  document.getElementById('re-p1-name').textContent  = st.p1.name;
+  document.getElementById('re-p2-name').textContent  = st.p2.name;
+  document.getElementById('re-p1-round').textContent = p1round;
+  document.getElementById('re-p2-round').textContent = p2round;
+  document.getElementById('re-p1-total').textContent = `누적: ${p1total}`;
+  document.getElementById('re-p2-total').textContent = `누적: ${p2total}`;
+
+  let verdict;
+  if (p1round > p2round) verdict = `🔵 ${st.p1.name} 라운드 승리!`;
+  else if (p2round > p1round) verdict = `🔴 ${st.p2.name} 라운드 승리!`;
+  else verdict = '이번 라운드 무승부!';
+  document.getElementById('re-verdict').textContent = verdict;
+
+  const nextBtn  = document.getElementById('re-next-btn');
+  const waitMsg  = document.getElementById('re-wait-msg');
+
+  if (isHost) {
+    nextBtn.style.display = 'block';
+    waitMsg.style.display = 'none';
+    if (st.round >= TOTAL_ROUNDS) {
+      nextBtn.textContent = '최종 결과 보기 →';
+    } else {
+      nextBtn.textContent = `라운드 ${st.round + 1} 시작 →`;
+    }
+  } else {
+    nextBtn.style.display = 'none';
+    waitMsg.style.display = 'block';
+  }
+
+  showScreen('screen-round-end');
+}
+
+// Host-driven advance to next round / finish
+function hostAdvance() {
+  if (!isHost || !gameState) return;
+  if (gameState.round >= TOTAL_ROUNDS) {
+    gameRef.update({ status: 'done' });
+  } else {
+    const nextRound = gameState.round + 1;
+    gameRef.update({ round: nextRound, status: 'countdown', timeLeft: ROUND_SECONDS });
+    lastStatus = null; // allow re-trigger
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render: winner
+// ─────────────────────────────────────────────────────────────────
+function renderWinner(st) {
+  const p1 = st.p1, p2 = st.p2;
+  let name, msg;
+
+  if (p1.totalScore > p2.totalScore) {
+    name = p1.name;
+    msg  = `🎉 ${p1.name}님이 ${p1.totalScore}마리로 우승했습니다!`;
+  } else if (p2.totalScore > p1.totalScore) {
+    name = p2.name;
+    msg  = `🎉 ${p2.name}님이 ${p2.totalScore}마리로 우승했습니다!`;
+  } else {
+    name = '무승부!';
+    msg  = `두 플레이어 모두 ${p1.totalScore}마리 — 대단해요! 🎊`;
+  }
+
+  document.getElementById('w-name').textContent = name;
+  document.getElementById('w-msg').textContent  = msg;
+  document.getElementById('w-table').innerHTML  = `
+    <div class="final-col">
+      <div class="pname p1-color">${p1.name}</div>
+      <div class="final-total p1-color">${p1.totalScore}</div>
+      <div class="final-rounds">${(p1.roundScores||[0,0,0]).join(' · ')}</div>
+    </div>
+    <div style="align-self:center; font-size:1.5rem; opacity:.4">VS</div>
+    <div class="final-col">
+      <div class="pname p2-color">${p2.name}</div>
+      <div class="final-total p2-color">${p2.totalScore}</div>
+      <div class="final-rounds">${(p2.roundScores||[0,0,0]).join(' · ')}</div>
+    </div>
+  `;
+
+  showScreen('screen-winner');
+  launchConfetti();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Confetti
+// ─────────────────────────────────────────────────────────────────
+function launchConfetti() {
+  for (let i = 0; i < 70; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      const sz = 6 + Math.random() * 10;
+      el.style.cssText = `
+        left: ${Math.random()*100}vw;
+        width: ${sz}px; height: ${sz * (0.4 + Math.random())}px;
+        background: hsl(${Math.random()*360},100%,60%);
+        animation-duration: ${1.5 + Math.random()*2.5}s;
+        animation-delay: ${Math.random()*1.5}s;
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 5000);
+    }, i * 40);
+  }
+}
+</script>
+</body>
+</html>
